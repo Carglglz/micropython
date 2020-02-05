@@ -10,8 +10,12 @@ except:
 
 DEBUG = 0
 
-def server_handshake(sock):
-    clr = sock.makefile("rwb", 0)
+
+def server_handshake(sock, ssl=False):
+    if not ssl:
+        clr = sock.makefile("rwb", 0)
+    else:
+        clr = sock
     l = clr.readline()
     #sys.stdout.write(repr(l))
 
@@ -43,20 +47,23 @@ def server_handshake(sock):
     if DEBUG:
         print("respkey:", respkey)
 
-    sock.send(b"""\
+    sock.write(b"""\
 HTTP/1.1 101 Switching Protocols\r
 Upgrade: websocket\r
 Connection: Upgrade\r
 Sec-WebSocket-Accept: """)
-    sock.send(respkey)
-    sock.send("\r\n\r\n")
+    sock.write(respkey)
+    sock.write("\r\n\r\n")
 
 
 # Very simplified client handshake, works for MicroPython's
 # websocket server implementation, but probably not for other
 # servers.
-def client_handshake(sock):
-    cl = sock.makefile("rwb", 0)
+def client_handshake(sock, ssl=False):
+    if not ssl:
+        cl = sock.makefile("rwb", 0)
+    else:
+        cl = sock
     cl.write(b"""\
 GET / HTTP/1.1\r
 Host: echo.websocket.org\r
@@ -65,10 +72,23 @@ Upgrade: websocket\r
 Sec-WebSocket-Key: foo\r
 \r
 """)
-    l = cl.readline()
-#    print(l)
-    while 1:
+    if not ssl:
         l = cl.readline()
-        if l == b"\r\n":
-            break
-#        sys.stdout.write(l)
+    #    print(l)
+        while 1:
+            l = cl.readline()
+            if l == b"\r\n":
+                break
+    else:
+        line = b''
+        while b'\n' not in line:
+            line += cl.recv(1)
+    #    print(l)
+
+        while 1:
+            line = b''
+            while b'\n' not in line:
+                line += cl.recv(1)
+            if line == b"\r\n":
+                break
+    #        sys.stdout.write(l)
