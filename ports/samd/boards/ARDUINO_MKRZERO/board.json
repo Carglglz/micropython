@@ -1,0 +1,22 @@
+{
+    "deploy": [
+        "../deploy.md"
+    ],
+    "docs": "",
+    "features": [
+        "Breadboard Friendly",
+		"Battery Charging",
+        "Micro USB",
+        "LED",
+        "MicroSD",
+		"ATECC508A"
+    ],
+    "images": [
+        "arduino_mkrzero.jpg"
+    ],
+    "mcu": "samd21",
+    "product": "Arduino MKR Zero",
+    "thumbnail": "",
+    "url": "https://docs.arduino.cc/hardware/mkr-zero",
+    "vendor": "Arduino"
+}
