@@ -354,6 +354,17 @@ static mp_obj_t framebuf_fill(mp_obj_t self_in, mp_obj_t col_in) {
 }
 static MP_DEFINE_CONST_FUN_OBJ_2(framebuf_fill_obj, framebuf_fill);
 
+static mp_obj_t framebuf_resize(mp_obj_t self_in, mp_obj_t width, mp_obj_t height) {
+    mp_obj_framebuf_t *self = MP_OBJ_TO_PTR(self_in);
+    mp_int_t n_width = mp_obj_get_int(width);
+    mp_int_t n_height = mp_obj_get_int(height);
+    self->width = n_width;
+    self->height = n_height;
+    self->stride = n_width;
+    return mp_const_none;
+}
+static MP_DEFINE_CONST_FUN_OBJ_3(framebuf_resize_obj, framebuf_resize);
+
 static mp_obj_t framebuf_fill_rect(size_t n_args, const mp_obj_t *args_in) {
     mp_obj_framebuf_t *self = MP_OBJ_TO_PTR(args_in[0]);
     mp_int_t args[5]; // x, y, w, h, col
@@ -762,6 +773,77 @@ static mp_obj_t framebuf_blit(size_t n_args, const mp_obj_t *args_in) {
 }
 static MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(framebuf_blit_obj, 4, 6, framebuf_blit);
 
+
+static mp_obj_t framebuf_blit_mono(size_t n_args, const mp_obj_t *args_in) {
+    mp_obj_framebuf_t *self = MP_OBJ_TO_PTR(args_in[0]);
+    mp_obj_t source_in = mp_obj_cast_to_native_base(args_in[1], MP_OBJ_FROM_PTR(&mp_type_framebuf));
+    if (source_in == MP_OBJ_NULL) {
+        mp_raise_TypeError(NULL);
+    }
+    mp_obj_framebuf_t *source = MP_OBJ_TO_PTR(source_in);
+
+    mp_int_t x = mp_obj_get_int(args_in[2]);
+    mp_int_t y = mp_obj_get_int(args_in[3]);
+    mp_int_t thr = 128;
+    if (n_args > 4) {
+
+        thr = mp_obj_get_int(args_in[4]);
+    }
+    mp_int_t key = -1;
+    if (n_args > 5) {
+        key = mp_obj_get_int(args_in[5]);
+    }
+    mp_obj_framebuf_t *palette = NULL;
+    if (n_args > 6 && args_in[6] != mp_const_none) {
+        palette = MP_OBJ_TO_PTR(mp_obj_cast_to_native_base(args_in[6], MP_OBJ_FROM_PTR(&mp_type_framebuf)));
+    }
+
+    if (
+        (x >= self->width) ||
+        (y >= self->height) ||
+        (-x >= source->width) ||
+        (-y >= source->height)
+        ) {
+        // Out of bounds, no-op.
+        return mp_const_none;
+    }
+
+    // Clip.
+    int x0 = MAX(0, x);
+    int y0 = MAX(0, y);
+    int x1 = MAX(0, -x);
+    int y1 = MAX(0, -y);
+    int x0end = MIN(self->width, x + source->width);
+    int y0end = MIN(self->height, y + source->height);
+
+    for (; y0 < y0end; ++y0) {
+        int cx1 = x1;
+        for (int cx0 = x0; cx0 < x0end; ++cx0) {
+            uint32_t col = getpixel(source, cx1, y1);
+            if (palette) {
+                col = getpixel(palette, col, 0);
+            }
+            if (col != (uint32_t)key) {
+                int r = ((col >> 11) & 0x1F) << 3; // 5 bits to 8 bits
+                int g = ((col >> 5) & 0x3F) << 2;  // 6 bits to 8 bits
+                int b = (col & 0x1F) << 3;  // 5 bits to 8 bits
+                int lum = (r * 299 + g * 587 + b * 114) / 1000; // 1000
+                if (lum >= thr) {
+
+                    setpixel(self, cx0, y0, 1);
+                } else {
+                    setpixel(self, cx0, y0, 0);
+                }
+            }
+            ++cx1;
+        }
+        ++y1;
+    }
+    return mp_const_none;
+}
+static MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(framebuf_blit_mono_obj, 4, 7, framebuf_blit_mono);
+
+
 static mp_obj_t framebuf_scroll(mp_obj_t self_in, mp_obj_t xstep_in, mp_obj_t ystep_in) {
     mp_obj_framebuf_t *self = MP_OBJ_TO_PTR(self_in);
     mp_int_t xstep = mp_obj_get_int(xstep_in);
@@ -847,6 +929,7 @@ static MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(framebuf_text_obj, 4, 5, framebuf_tex
 #if !MICROPY_ENABLE_DYNRUNTIME
 static const mp_rom_map_elem_t framebuf_locals_dict_table[] = {
     { MP_ROM_QSTR(MP_QSTR_fill), MP_ROM_PTR(&framebuf_fill_obj) },
+    { MP_ROM_QSTR(MP_QSTR_resize), MP_ROM_PTR(&framebuf_resize_obj) },
     { MP_ROM_QSTR(MP_QSTR_fill_rect), MP_ROM_PTR(&framebuf_fill_rect_obj) },
     { MP_ROM_QSTR(MP_QSTR_pixel), MP_ROM_PTR(&framebuf_pixel_obj) },
     { MP_ROM_QSTR(MP_QSTR_hline), MP_ROM_PTR(&framebuf_hline_obj) },
@@ -858,6 +941,7 @@ static const mp_rom_map_elem_t framebuf_locals_dict_table[] = {
     { MP_ROM_QSTR(MP_QSTR_poly), MP_ROM_PTR(&framebuf_poly_obj) },
     #endif
     { MP_ROM_QSTR(MP_QSTR_blit), MP_ROM_PTR(&framebuf_blit_obj) },
+    { MP_ROM_QSTR(MP_QSTR_blit_mono), MP_ROM_PTR(&framebuf_blit_mono_obj) },
     { MP_ROM_QSTR(MP_QSTR_scroll), MP_ROM_PTR(&framebuf_scroll_obj) },
     { MP_ROM_QSTR(MP_QSTR_text), MP_ROM_PTR(&framebuf_text_obj) },
 };
